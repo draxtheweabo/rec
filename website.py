@@ -97,7 +97,7 @@ def get_db_connection():
     return pymysql.connect(
         host='localhost',  # e.g., 'localhost'
         user='root',
-        password='',
+        password='draxtheweabo',
         db='recinscan',
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
@@ -108,7 +108,7 @@ def get_dishes_from_db():
     connection = pymysql.connect(
         host='localhost',
         user='root',
-        password='',
+        password='draxtheweabo',
         database='recinscan'
     )
     try:
@@ -232,7 +232,7 @@ def cut_outside_boxes_with_margin(img, boxes, save_dir, filename="cut_output.jpg
 db_connection = pymysql.connect(
     host="localhost",
     user="root",
-    password="",
+    password="draxtheweabo",
     database="recinscan"
 )
 @app.route('/update_dish', methods=['GET', 'POST'])
