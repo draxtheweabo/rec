@@ -97,7 +97,7 @@ def get_db_connection():
     return pymysql.connect(
         host='localhost',  # e.g., 'localhost'
         user='root',
-        password='draxtheweabo',
+        password='',
         db='recinscan',
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
@@ -108,7 +108,7 @@ def get_dishes_from_db():
     connection = pymysql.connect(
         host='localhost',
         user='root',
-        password='draxtheweabo',
+        password='',
         database='recinscan'
     )
     try:
@@ -232,7 +232,7 @@ def cut_outside_boxes_with_margin(img, boxes, save_dir, filename="cut_output.jpg
 db_connection = pymysql.connect(
     host="localhost",
     user="root",
-    password="draxtheweabo",
+    password="",
     database="recinscan"
 )
 @app.route('/update_dish', methods=['GET', 'POST'])
@@ -257,130 +257,134 @@ def admin():
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_dish():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    dishes = get_dishes_from_db()
+    if 'loggedin' in session:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        dishes = get_dishes_from_db()
 
-    if request.method == 'POST':
-        dish_name = request.form['dish_name']
-        instructions = request.form['instructions']
-        tag = request.form['tag']
+        if request.method == 'POST':
+            dish_name = request.form['dish_name']
+            instructions = request.form['instructions']
+            tag = request.form['tag']
 
-        # ✅ Handle Image Upload
-        image = request.files['image']
-        filename = secure_filename(image.filename)
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        image.save(image_path)
+            # ✅ Handle Image Upload
+            image = request.files['image']
+            filename = secure_filename(image.filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            image.save(image_path)
 
-        # ✅ Insert Dish into Database
-        cursor.execute("INSERT INTO dishes (dish_name, instructions, tag, image_path) VALUES (%s, %s, %s, %s)", 
-                       (dish_name, instructions, tag, image_path))
-        conn.commit()
-        dish_id = cursor.lastrowid  # Get the last inserted dish ID
+            # ✅ Insert Dish into Database
+            cursor.execute("INSERT INTO dishes (dish_name, instructions, tag, image_path) VALUES (%s, %s, %s, %s)", 
+                        (dish_name, instructions, tag, image_path))
+            conn.commit()
+            dish_id = cursor.lastrowid  # Get the last inserted dish ID
 
-        # ✅ Insert Ingredients
-        ingredient_names = request.form.getlist('ingredient_name[]')
-        ingredient_measurements = request.form.getlist('ingredient_measurement[]')
-        ingredient_types = request.form.getlist('ingredient_type[]')
+            # ✅ Insert Ingredients
+            ingredient_names = request.form.getlist('ingredient_name[]')
+            ingredient_measurements = request.form.getlist('ingredient_measurement[]')
+            ingredient_types = request.form.getlist('ingredient_type[]')
 
-        insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
-        for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
-            cursor.execute(insert_query, (dish_id, name, measurement, ing_type))
+            insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
+            for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
+                cursor.execute(insert_query, (dish_id, name, measurement, ing_type))
 
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
 
-        return redirect(url_for('admin_dashboard'))  # Redirect to homepage after adding
+            return redirect(url_for('dashboard'))  # Redirect to homepage after adding
 
-    return render_template('Pages/add_dish.html')  # Load add dish form
+        return render_template('Pages/add_dish.html')  # Load add dish form
+    return redirect(url_for('admi_login'))
 
 @app.route('/delete/<int:dish_id>', methods=['GET', 'POST'])
 def delete_dish(dish_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    dishes = get_dishes_from_db()
+    if 'loggedin' in session:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        dishes = get_dishes_from_db()
 
-    try:
-        # ✅ Delete related records first
-        cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (dish_id,))
-        cursor.execute("DELETE FROM dishes WHERE id=%s", (dish_id,))
+        try:
+            # ✅ Delete related records first
+            cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (dish_id,))
+            cursor.execute("DELETE FROM dishes WHERE id=%s", (dish_id,))
 
-        conn.commit()
-    except pymysql.MySQLError as e:
-        conn.rollback()
-        print(f"Error: {e}")  # Debugging purposes
-    finally:
-        cursor.close()
-        conn.close()
+            conn.commit()
+        except pymysql.MySQLError as e:
+            conn.rollback()
+            print(f"Error: {e}")  # Debugging purposes
+        finally:
+            cursor.close()
+            conn.close()
 
-    return redirect(url_for('admin_dashboard'))  # Redirect to the homepage after deletion
-
+        return redirect(url_for('dashboard'))  # Redirect to the homepage after deletion
+    return redirect(url_for('admi_login'))
 
 @app.route('/edit/<int:id>', methods=['GET', 'POST'])
 def edit(id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    dishes = get_dishes_from_db()
+    if 'loggedin' in session:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        dishes = get_dishes_from_db()
 
-    if request.method == 'POST':
-        dish_name = request.form['dish_name']
-        instructions = request.form['instructions']
-        tag = request.form['tag']
-        
-        # Handle Image Upload
-        image_path = None
-        if 'image' in request.files:
-            image = request.files['image']
-            if image.filename:
-                filename = secure_filename(image.filename)  # Sanitize the filename
-                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                image.save(image_path)  # Save the uploaded file
+        if request.method == 'POST':
+            dish_name = request.form['dish_name']
+            instructions = request.form['instructions']
+            tag = request.form['tag']
+            
+            # Handle Image Upload
+            image_path = None
+            if 'image' in request.files:
+                image = request.files['image']
+                if image.filename:
+                    filename = secure_filename(image.filename)  # Sanitize the filename
+                    image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    image.save(image_path)  # Save the uploaded file
 
-        # Update Dish Data
-        update_query = """
-        UPDATE dishes SET dish_name=%s, instructions=%s, tag=%s 
-        WHERE id=%s
-        """
-        cursor.execute(update_query, (dish_name, instructions, tag, id))
+            # Update Dish Data
+            update_query = """
+            UPDATE dishes SET dish_name=%s, instructions=%s, tag=%s 
+            WHERE id=%s
+            """
+            cursor.execute(update_query, (dish_name, instructions, tag, id))
 
-        if image_path:
-            cursor.execute("UPDATE dishes SET image_path=%s WHERE id=%s", (image_path, id))
+            if image_path:
+                cursor.execute("UPDATE dishes SET image_path=%s WHERE id=%s", (image_path, id))
 
-        # Delete Existing Ingredients
-        cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (id,))
+            # Delete Existing Ingredients
+            cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (id,))
 
-        # Insert New Ingredients
-        ingredient_names = request.form.getlist('ingredient_name[]')
-        ingredient_measurements = request.form.getlist('ingredient_measurement[]')
-        ingredient_types = request.form.getlist('ingredient_type[]')
-        print("Ingredient Names:", ingredient_names)
-        print("Ingredient Measurements:", ingredient_measurements)
-        print("Ingredient Types:", ingredient_types)
-        insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
-        for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
-            cursor.execute(insert_query, (id, name, measurement, ing_type))
+            # Insert New Ingredients
+            ingredient_names = request.form.getlist('ingredient_name[]')
+            ingredient_measurements = request.form.getlist('ingredient_measurement[]')
+            ingredient_types = request.form.getlist('ingredient_type[]')
+            print("Ingredient Names:", ingredient_names)
+            print("Ingredient Measurements:", ingredient_measurements)
+            print("Ingredient Types:", ingredient_types)
+            insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
+            for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
+                cursor.execute(insert_query, (id, name, measurement, ing_type))
 
-        conn.commit()
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return redirect(url_for('dashboard'))
+
+        # Fetch Dish Data
+        cursor.execute("SELECT * FROM dishes WHERE id=%s", (id,))
+        dish = cursor.fetchone()
+
+        # Fetch Ingredients
+        cursor.execute("SELECT * FROM recipe WHERE dish_id=%s", (id,))
+        ingredients = cursor.fetchall()
+
         cursor.close()
         conn.close()
-        return redirect(url_for('admin_dashboard'))
 
-    # Fetch Dish Data
-    cursor.execute("SELECT * FROM dishes WHERE id=%s", (id,))
-    dish = cursor.fetchone()
-
-    # Fetch Ingredients
-    cursor.execute("SELECT * FROM recipe WHERE dish_id=%s", (id,))
-    ingredients = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-
-    return render_template('Pages/edit_dish.html', dish=dish, ingredients=ingredients)
-
+        return render_template('Pages/edit_dish.html', dish=dish, ingredients=ingredients)
+    return redirect(url_for('admi_login'))
 @app.route('/admin', methods=['POST'])
 def admi_login():
     if request.method == 'POST':
@@ -391,21 +395,21 @@ def admi_login():
             session['loggedin'] = True
             session['username'] = 'admin'
             dishes = get_dishes_from_db()
-            return redirect(url_for('admin_dashboard'))
+            return render_template('Pages/admin_dashboard.html',dishes=dishes)
         else:
             message='Invalid username or password'
 
-    return render_template('Pages/admin_dashboard.html',message=message)
+    return render_template('Pages/admin.html',message=message)
 
-@app.route('/admin/dashboard')
-def admin_dashboard():
+@app.route('/dashboard')
+def dashboard():
     if 'loggedin' in session:
         dishes = get_dishes_from_db()
-        return redirect(url_for('admin_dashboard'))
+        return render_template('Pages/admin_dashboard/.html', dishes=dishes)  
     return redirect(url_for('admi_login'))
 
 @app.route('/admin/logout')
-def admi_logout():
+def admin_logout():
     session.pop('loggedin', None)
     session.pop('username', None)
     return redirect(url_for('admi_login'))
