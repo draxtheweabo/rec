@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign In / Sign Up</title>
+  <title>Change Password</title>
   <link rel="stylesheet" href="static/assets/styles.css">
 </head>
 
@@ -15,40 +15,16 @@
   </div>
 
   <div class="login-container">
-    <div id="switch" class="switch-container">
-      <div id="signInTab" class="switch-option active">Sign In</div>
-      <div id="signUpTab" class="switch-option inactive">Sign Up</div>
-    </div>
     <div id="signInForm">
-      <h2>Sign In</h2>
-      <form action="/" method="POST">
-        <label for="username">Username:</label>
-        <input type="text" id="username" name="username" required>
-        
-        <label for="password">Password:</label>
-        <input type="password" id="password" name="password" minlength="8" required>
-        <a href="{{ url_for('forgotpass') }}" role="button" aria-label="view catalogue"style="color: #333333;">
-        Forgot Password
-        </a>
-        <button type="submit" name="signin">Login</button>
+      <h2>Change Password</h2>
+      <form action="/reset" method="POST">
+        <label for="new">New Password:</label>
+        <input type="text" id="new" name="new" minlength="8" required>
+        <label for="confirm">Confirm Password:</label>
+        <input type="text" id="confirm" name="confirm" minlength="8" required>
+        <button type="submit" name="reset">Reset Password</button>
       </form>
     </div>
-
-    <div id="signUpForm" style="display: none;">
-      <h2>Sign Up</h2>
-      <form action="/" method="POST">
-        <label for="newUsername">Username:</label>
-        <input type="text" id="newUsername" name="newUsername" required>
-        
-        <label for="email">Email:</label>
-        <input type="email" id="email" name="email" required>
-        
-        <label for="newPassword">Password:</label>
-        <input type="password" id="newPassword" name="newPassword" minlength="8" required>
-        
-        <button type="submit" name="signup">Register</button>
-      </form>
-
 </div>
 </div>
 </body>
@@ -114,7 +90,6 @@
       }
   });
 </script>
-
 <style>
 body {
   position: relative;
@@ -226,7 +201,6 @@ form button:hover {
   background-color: #256428;
 }
 </style>
-
 <script>
   const signInTab = document.getElementById('signInTab');
   const signUpTab = document.getElementById('signUpTab');

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Dish</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #e6f7e6;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 60%;
+            margin: 50px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #2d6a4f;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: 1px solid #95d5b2;
+        }
+        button {
+            background-color: #52b788;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #40916c;
+        }
+        .ingredient-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        img {
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .back-button {
+            background-color: #6c757d;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        .back-button:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="back-button" onclick="history.back()">Back</button>
+        <h2>Edit Dish</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="text" name="dish_name" value="{{ dish.dish_name }}" required>
+            <textarea name="instructions"style="height: 100px;">{{ dish.instructions }}</textarea>
+            <img src="{{ url_for('static', filename=dish.image_path.split('static/')[-1]) }}" alt="Current Image" width="150">
+            <input type="file" name="image" accept="image/*">
+            <select name="tag">
+                <option value="Meat" {% if dish.tag == 'Meat' %}selected{% endif %}>Meat</option>
+                <option value="Vegetable" {% if dish.tag == 'Vegetable' %}selected{% endif %}>Vegetable</option>
+                <option value="Others" {% if dish.tag == 'Others' %}selected{% endif %}>Others</option>
+            </select>
+
+            <h2>Ingredient List</h2>
+            <div id="ingredients-container">
+                {% for ingredient in ingredients %}
+                <div class="ingredient-row">
+                    <input type="text" name="ingredient_name[]" value="{{ ingredient.ingredient_name }}" required>
+                    <input type="text" name="ingredient_measurement[]" value="{{ ingredient.measurement }}" required>
+                    <select name="ingredient_type[]">
+                        <option value="main" {% if ingredient.category == 'main' %}selected{% endif %}>Main</option>
+                        <option value="secondary" {% if ingredient.category == 'secondary' %}selected{% endif %}>Secondary</option>
+                        <option value="common" {% if ingredient.category == 'common' %}selected{% endif %}>Common</option>
+                    </select>
+                    <button type="button" onclick="removeIngredient(this)">Remove</button>
+                </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" onclick="addIngredient()">Add Ingredient</button>
+            <button type="submit">Update</button>
+        </form>
+    </div>
+</body>
+</html>
+
+<script>
+    function addIngredient() {
+        const container = document.getElementById("ingredients-container");
+
+        const newRow = document.createElement("div");
+        newRow.className = "ingredient-row";
+        newRow.innerHTML = `
+            <input type="text" name="ingredient_name[]" placeholder="Ingredient Name" required>
+            <input type="text" name="ingredient_measurement[]" placeholder="Measurement" required>
+            <select name="ingredient_type[]">
+                <option value="main">Main</option>
+                <option value="secondary">Secondary</option>
+                <option value="common">Common</option>
+            </select>
+            <button type="button" onclick="removeIngredient(this)">Remove</button>
+        `;
+
+        container.appendChild(newRow);
+    }
+
+    function removeIngredient(button) {
+        button.parentElement.remove();
+    }
+</script>

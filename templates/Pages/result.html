@@ -49,18 +49,6 @@
                     changeButtonText();
                     };
                     
-                    function changeButtonText() {
-                    const uploadButton = document.getElementById('uploadButton');
-                    const uploadText = document.getElementById('uploadText');
-                    
-                    if (window.innerWidth <= 768) {  // This is the breakpoint for mobile
-                    uploadText.textContent = "Upload Image Using Camera";
-                    document.getElementById('inputfile').setAttribute('capture', 'camera');
-                    } else {
-                    uploadText.textContent = "Choose an Image Here";
-                    document.getElementById('inputfile').removeAttribute('capture');
-                    }
-                    }
                     </script>
                   <button type="button" class="scanner-button" id="scanImageButton" onclick="scanImage()">Scan Image</button>
                 </div>

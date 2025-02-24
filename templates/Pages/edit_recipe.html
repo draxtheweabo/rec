@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Ingredients Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #e6f7e6;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 50%;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #2d6a4f;
+        }
+        .ingredient-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+            justify-content: center;
+        }
+        .ingredient-row input, .ingredient-row select, .ingredient-row button {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #95d5b2;
+        }
+        button {
+            background-color: #52b788;
+            color: white;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #40916c;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Ingredient List</h2>
+        <div id="ingredients-container">
+            <div class="ingredient-row">
+                <input type="text" placeholder="Ingredient Name">
+                <input type="text" placeholder="Measurement">
+                <select>
+                    <option value="main">Main</option>
+                    <option value="secondary">Secondary</option>
+                    <option value="common">Common</option>
+                </select>
+                <button onclick="addIngredient()">Add</button>
+                <button onclick="removeIngredient(this)" disabled>Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function addIngredient() {
+            const container = document.getElementById("ingredients-container");
+            const rows = document.querySelectorAll(".ingredient-row");
+
+            const newRow = document.createElement("div");
+            newRow.className = "ingredient-row";
+            newRow.innerHTML = `
+                <input type="text" placeholder="Ingredient Name">
+                <input type="text" placeholder="Measurement">
+                <select>
+                    <option value="main">Main</option>
+                    <option value="secondary">Secondary</option>
+                    <option value="common">Common</option>
+                </select>
+                <button onclick="addIngredient()">Add</button>
+                <button onclick="removeIngredient(this)">Remove</button>
+            `;
+
+            container.appendChild(newRow);
+
+            // Enable remove button on previous row
+            if (rows.length === 1) {
+                rows[0].querySelector("button:last-child").removeAttribute("disabled");
+            }
+        }
+
+        function removeIngredient(button) {
+            const container = document.getElementById("ingredients-container");
+            const rows = document.querySelectorAll(".ingredient-row");
+
+            if (rows.length > 1) {
+                button.parentElement.remove();
+                if (rows.length === 2) {
+                    document.querySelector(".ingredient-row button:last-child").setAttribute("disabled", "true");
+                }
+            }
+        }
+    </script>
+
+</body>
+</html>

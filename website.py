@@ -4,10 +4,11 @@ import cv2
 import sqlite3
 from flask import Flask, render_template, request, Response, session,redirect,session,jsonify,flash,url_for
 from werkzeug.utils import  send_from_directory
+from werkzeug.utils import secure_filename
+
 import os
 import base64
 import time
-#import ollama
 from datetime import datetime
 from ultralytics import YOLO
 from huggingface_hub import InferenceClient
@@ -20,7 +21,8 @@ client = InferenceClient(
     provider="together", 
     api_key="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"  # Replace with your actual API key
 )
-
+UPLOAD_FOLDER = 'static/assets/img/Recipes/'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 import time
 def get_ai_response(user_input, retries=3, delay=5):
     """Handles API requests with retries."""
@@ -87,6 +89,7 @@ def get_incremented_folder(base_dir, prefix="scanned_image"):
             continue
     # Increment max number for the new folder
     return os.path.join(base_dir, f"{prefix}{max_number + 1}")
+
 def normalize_path(path):
     return path.replace("\\", "/")
 #Database Stuff
@@ -99,6 +102,7 @@ def get_db_connection():
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
     )
+
 def get_dishes_from_db():
     # Establish database connection
     connection = pymysql.connect(
@@ -136,6 +140,7 @@ def get_dishes_from_db():
 
             if dish_id not in dishes:
                 dishes[dish_id] = {
+                    "id": dish_id,
                     "dish_name": dish_name,
                     "instructions": instructions.splitlines(),
                     "image": image_path,
@@ -166,8 +171,6 @@ def get_dishes_from_db():
         cursor.close()
         connection.close()
 
-
-
 #Blur Function Stuff
 def blur_outside_boxes(img, boxes, save_dir, filename="blurred_output.jpg", blur_intensity=(151, 151), margin=20):
     # Create a copy of the image to apply blur
@@ -197,6 +200,7 @@ def blur_outside_boxes(img, boxes, save_dir, filename="blurred_output.jpg", blur
     cv2.imwrite(output_path, blurred_img)
     print(f"Image saved to {output_path}")
     return output_path
+
 def cut_outside_boxes_with_margin(img, boxes, save_dir, filename="cut_output.jpg", cut_color=(0, 0, 0), margin=10):
     # Create a copy of the image
     output_img = img.copy()
@@ -247,12 +251,135 @@ def update_dish():
         db_connection.commit()
     return render_template('Pages/admin.html')
 
-
-
-
 @app.route('/admin')
 def admin():
     return render_template('Pages/admin.html')
+
+@app.route('/add', methods=['GET', 'POST'])
+def add_dish():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    dishes = get_dishes_from_db()
+
+    if request.method == 'POST':
+        dish_name = request.form['dish_name']
+        instructions = request.form['instructions']
+        tag = request.form['tag']
+
+        # ✅ Handle Image Upload
+        image = request.files['image']
+        filename = secure_filename(image.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        image.save(image_path)
+
+        # ✅ Insert Dish into Database
+        cursor.execute("INSERT INTO dishes (dish_name, instructions, tag, image_path) VALUES (%s, %s, %s, %s)", 
+                       (dish_name, instructions, tag, image_path))
+        conn.commit()
+        dish_id = cursor.lastrowid  # Get the last inserted dish ID
+
+        # ✅ Insert Ingredients
+        ingredient_names = request.form.getlist('ingredient_name[]')
+        ingredient_measurements = request.form.getlist('ingredient_measurement[]')
+        ingredient_types = request.form.getlist('ingredient_type[]')
+
+        insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
+        for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
+            cursor.execute(insert_query, (dish_id, name, measurement, ing_type))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+
+        return redirect(url_for('admin_dashboard'))  # Redirect to homepage after adding
+
+    return render_template('Pages/add_dish.html')  # Load add dish form
+
+@app.route('/delete/<int:dish_id>', methods=['GET', 'POST'])
+def delete_dish(dish_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    dishes = get_dishes_from_db()
+
+    try:
+        # ✅ Delete related records first
+        cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (dish_id,))
+        cursor.execute("DELETE FROM dishes WHERE id=%s", (dish_id,))
+
+        conn.commit()
+    except pymysql.MySQLError as e:
+        conn.rollback()
+        print(f"Error: {e}")  # Debugging purposes
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))  # Redirect to the homepage after deletion
+
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+def edit(id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    dishes = get_dishes_from_db()
+
+    if request.method == 'POST':
+        dish_name = request.form['dish_name']
+        instructions = request.form['instructions']
+        tag = request.form['tag']
+        
+        # Handle Image Upload
+        image_path = None
+        if 'image' in request.files:
+            image = request.files['image']
+            if image.filename:
+                filename = secure_filename(image.filename)  # Sanitize the filename
+                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image.save(image_path)  # Save the uploaded file
+
+        # Update Dish Data
+        update_query = """
+        UPDATE dishes SET dish_name=%s, instructions=%s, tag=%s 
+        WHERE id=%s
+        """
+        cursor.execute(update_query, (dish_name, instructions, tag, id))
+
+        if image_path:
+            cursor.execute("UPDATE dishes SET image_path=%s WHERE id=%s", (image_path, id))
+
+        # Delete Existing Ingredients
+        cursor.execute("DELETE FROM recipe WHERE dish_id=%s", (id,))
+
+        # Insert New Ingredients
+        ingredient_names = request.form.getlist('ingredient_name[]')
+        ingredient_measurements = request.form.getlist('ingredient_measurement[]')
+        ingredient_types = request.form.getlist('ingredient_type[]')
+        print("Ingredient Names:", ingredient_names)
+        print("Ingredient Measurements:", ingredient_measurements)
+        print("Ingredient Types:", ingredient_types)
+        insert_query = "INSERT INTO recipe (dish_id, ingredient_name, measurement, category) VALUES (%s, %s, %s, %s)"
+        for name, measurement, ing_type in zip(ingredient_names, ingredient_measurements, ingredient_types):
+            cursor.execute(insert_query, (id, name, measurement, ing_type))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect(url_for('admin_dashboard'))
+
+    # Fetch Dish Data
+    cursor.execute("SELECT * FROM dishes WHERE id=%s", (id,))
+    dish = cursor.fetchone()
+
+    # Fetch Ingredients
+    cursor.execute("SELECT * FROM recipe WHERE dish_id=%s", (id,))
+    ingredients = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('Pages/edit_dish.html', dish=dish, ingredients=ingredients)
 
 @app.route('/admin', methods=['POST'])
 def admi_login():
@@ -263,16 +390,18 @@ def admi_login():
         if username == 'admin' and password == 'admin':
             session['loggedin'] = True
             session['username'] = 'admin'
-            return redirect(url_for('admi_dashboard'))
+            dishes = get_dishes_from_db()
+            return redirect(url_for('admin_dashboard'))
         else:
             message='Invalid username or password'
 
-    return render_template('Pages/admin.html',message=message)
+    return render_template('Pages/admin_dashboard.html',message=message)
 
 @app.route('/admin/dashboard')
-def admi_dashboard():
+def admin_dashboard():
     if 'loggedin' in session:
-        return render_template('Pages/dashboard.html')
+        dishes = get_dishes_from_db()
+        return redirect(url_for('admin_dashboard'))
     return redirect(url_for('admi_login'))
 
 @app.route('/admin/logout')
@@ -371,7 +500,6 @@ def update_preferences_bulk():
     connection.close()
     return jsonify({"message": f"Preferences {action}ed successfully!", "preferences": preferences})
 
-
 @app.route("/history")
 def history():
     if "id" not in session:  # Ensure user is logged in
@@ -394,31 +522,28 @@ def login():
     if 'signin' in request.form:  # Check if the "signin" button was clicked
         user = request.form.get('username')
         password = request.form.get('password')
+
         if not user or not password:
             message = 'All fields are required!'
-            return render_template('index.html',message=message)
+            return render_template('index.html', message=message)
 
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            cursor.execute(
-                'SELECT * FROM accounts WHERE user = %s AND pass = %s',
-                (user, password)
-            )
+            cursor.execute('SELECT * FROM accounts WHERE user = %s', (user,))
             account = cursor.fetchone()
 
         conn.close()
 
-        if account:
+        if account and check_password_hash(account['pass'], password):  # ✅ Correct way to verify
             session['id'] = account['id']
             session['user'] = account['user']
             categoriesed = fetch_ingredients()
             preference = get_preferences()
-            categoriesed = fetch_ingredients()
             print(preference)
-            return render_template('Pages/landing.html',current_user=session['user'],preference=preference,categories=categoriesed)  # Redirect to the home page
+            return render_template('Pages/landing.html', current_user=session['user'], preference=preference, categories=categoriesed)
         else:
             message = 'Invalid credentials. Please try again.'
-            return render_template('index.html',message=message)
+            return render_template('index.html', message=message)
 
     elif 'signup' in request.form:  # Check if the "signup" button was clicked
         new_username = request.form.get('newUsername')
@@ -445,8 +570,8 @@ def login():
         # Insert the new user into the database
         with conn.cursor() as cursor:
             cursor.execute(
-                'INSERT INTO accounts (user, pass, email) VALUES (%s, %s, %s)',
-                (new_username, new_password, new_email)
+                'INSERT INTO accounts (user, pass, email, preference) VALUES (%s, %s, %s,"")',
+                (new_username, generate_password_hash(new_password), new_email)
             )
             conn.commit()
 
@@ -478,7 +603,6 @@ def get_dishess():
         categorized_dishes[category].append(dish)
 
     return categorized_dishes
-
 
 @app.route('/Home')
 def home():
@@ -551,7 +675,7 @@ def chat():
         print(preference)
         print(session['user'])
         user_input="i want it to have an introduction first using this font lets role play can you introduce ur self as a kapampangan ai Dish Recommender and limit your response only to kapampangan related topics but talks in english and if the topic is not kapampangan just say im sorry i only response to kapampangan topic "
-        response_text = get_ai_response(user_input)
+        response_text = get_ai_response_local(user_input)
         return render_template('Pages/chat.html',response=response_text,current_user=session['user'],preference=preference,categories=categoriesed)
     else:
         #flash('Invalid credentials. Please try again.', 'error')
@@ -636,6 +760,7 @@ def predict_img():
     else:
         #flash('Invalid credentials. Please try again.', 'error') 
         return render_template('index.html')
+
 @app.route("/ScanAgain", methods=["GET","POST"])
 def scan_ingredients():
     if session['user']!="":
@@ -848,12 +973,130 @@ def chat_response():
         preference = get_preferences()
         categoriesed = fetch_ingredients()
         user_input = request.form.get("user_input", "")
-        response_text = get_ai_response(user_input)
+        response_text = get_ai_response_local(user_input)
         return render_template("Pages/chat.html", response=response_text,current_user=session['user'],preference=preference,categories=categoriesed)
     else:
         #flash('Invalid credentials. Please try again.', 'error') 
         return render_template('index.html')
     
+
+#Forgot Password Functions
+import random
+from flask_mail import Mail, Message
+from werkzeug.security import generate_password_hash,check_password_hash
+# Email configuration (Use your own SMTP details)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Change if using another service
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'recinscan@gmail.com'
+app.config['MAIL_PASSWORD'] = 'adom wkds ymvn tmbv'
+app.config['MAIL_DEFAULT_SENDER'] = 'recinscan@gmail.com'
+mail = Mail(app)
+
+@app.route('/forgot', methods=['POST'])
+def forgot_password():
+    email = request.form.get('email')
+
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM accounts WHERE email = %s", (email,))
+        user = cursor.fetchone()  # Fetch user details if email exists
+    conn.close()
+
+    if not user:
+        message="Email not registered."
+        return render_template('Pages/forgotpass1.html',message=message)
+    
+    # Generate 6-digit code
+    reset_code = str(random.randint(100000, 999999))
+    session['reset_code'] = reset_code
+    session['email'] = email  # Store email in session
+
+    # Send email
+    msg = Message('Password Reset Code', recipients=[email])
+    msg.body = f'Your password reset code is: {reset_code}'
+    mail.send(msg)
+
+    message="Reset code sent to your email."
+    return render_template('Pages/validatepass.html',message=message)
+
+@app.route('/validate', methods=['POST'])
+def validate_code():
+    code = request.form.get('code')
+
+    if 'reset_code' not in session or session.get('reset_code') != code:
+        message="Invalid or expired code."
+        return render_template('Pages/validatepass.html',message=message)
+
+    message="Code verified. Proceed to reset password."
+    return render_template('Pages/changepass.html',message=message)
+
+@app.route('/reset', methods=['POST'])
+def reset_password():
+    new_password = request.form.get('new')
+    confirm_password = request.form.get('confirm')
+
+    if new_password != confirm_password:
+        message="Passwords do not match."
+        return render_template('Pages/changepass.html',message=message)
+
+    email = session.get('email')  # Get user email from session
+
+    if not email:
+        message="Session expired. Start over."
+        return render_template('Pages/changepass.html',message=message)
+
+    # **Hash the new password for security**
+    hashed_password = generate_password_hash(new_password)
+
+    # **Update password in MySQL using pymysql**
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            sql = "UPDATE accounts SET pass = %s WHERE email = %s"
+            cursor.execute(sql, (hashed_password, email))
+            print(f"SQL Query Executed: {sql}")  # Debugging
+            print(f"Values: {hashed_password}, {email}")  # Debugging
+        connection.commit()
+        print("✅ Password updated successfully!")  # Debugging
+    except Exception as e:
+        print(f"❌ Error updating password: {e}")  # Debugging
+    finally:
+        connection.close()
+
+    # **Clear session data**
+    session.pop('reset_code', None)
+    session.pop('email', None)
+
+    message="Password reset successful!"
+    return render_template('index.html',message=message)
+
+@app.route('/resend_code', methods=['POST'])
+def resend_code():
+    if 'email' not in session:
+        message="Session expired. Please restart the process."
+        return redirect(url_for('forgot_password_page',message=message))
+
+    email = session['email']
+
+    # Generate new 6-digit code
+    reset_code = str(random.randint(100000, 999999))
+    session['reset_code'] = reset_code  # Store new code in session
+
+    # Send Email
+    msg = Message("New Password Reset Code", sender="your-email@gmail.com", recipients=[email])
+    msg.body = f"Your new password reset code is: {reset_code}"
+    mail.send(msg)
+
+    message="A new reset code has been sent to your email.", "success"
+    return render_template('Pages/validatepass.html',message=message)
+
+
+@app.route('/forgotpass')
+def forgotpass():
+    return render_template('Pages/forgotpass1.html')
+
+
 if __name__ == "__main__":
     model = YOLO('ModelV7.pt')
     app.run(host="0.0.0.0", port=5000,debug=True) 
